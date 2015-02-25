@@ -10,6 +10,7 @@ class Staion:
     def __init__(self,id):
         self.stationID=id
         self.passenger=[]
+        self.parking=0
 
     def setwaitingpassenger(self,num):
         self.waitingpassenger=num

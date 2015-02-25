@@ -7,6 +7,7 @@ from Passenger import Passenger
 import random
 import math
 import MySQLdb
+
 import threading
 
 
@@ -38,12 +39,12 @@ def clock(routeinstancelist, stationinstancelist):
                             if i >= j:
                                 f.write('0')
                             else:
-                                f.write('%s' % poisson(2))  #10=poisson(10)
+                                f.write('%s' % 3)  #3=poisson(2)
                         else:
                             if i >= j:
                                 f.write('0,')
                             else:
-                                f.write('%s,' % poisson(2))
+                                f.write('%s,' % 3)
                     f.write('\n')
                 f.close()
 
@@ -87,7 +88,7 @@ def clock(routeinstancelist, stationinstancelist):
             print "Mysql Error %d: %s" % (e.args[0], e.args[1])
 
 
-        intervaltime = 1200
+        intervaltime = 1200#发车间隔
         #二、更新公交车
         for routeline in routeinstancelist:
             #1、在每一秒首先判断该route是否有新车发出，每隔20min（1200s）每条线路发出一辆新车active→true
@@ -105,117 +106,29 @@ def clock(routeinstancelist, stationinstancelist):
             routeline.updatebusrunning(busonrun)
 
 
-            #4、判断是否到达新站，如果到达，设定等待时间.每次到站该子语句只执行一次
+            #3、判断是否到达新站，如果到达，设置为候车。每次到站该子语句只执行一次
             for car in routeline.busrunning:
                 indexofforeshop = routeline.stoplist.index(car.forestation)#前一站的车站序号
                 indexofpreshop = indexofforeshop + 1
-                if ((car.rundistance >= int(routeline.distancelist[indexofforeshop]) * 100) or (
-                                car.forestation == routeline.stoplist[
-                                0] and car.rundistance == 0 and clock % intervaltime == 0)):
+                if ((car.rundistance!=0 and car.rundistance >= int(routeline.distancelist[indexofforeshop]) * 100) or (car.forestation == routeline.stoplist[0] and car.rundistance == 0 and clock % intervaltime == 0)):
                     if (car.forestation == routeline.stoplist[len(routeline.stoplist) - 2]):
                         #到达终点
-                        car.active = False
                         car.forestation = routeline.stoplist[indexofforeshop + 1]
                         car.rundistance = 0
+                        car.parkwaitingtime=1#开始候车，等待服务
                     else:
                         #到达非终点车站，先更新车辆位置信息
                         if car.rundistance >= int(routeline.distancelist[indexofforeshop]) * 100:
                             car.forestation = routeline.stoplist[indexofforeshop + 1]
                             car.rundistance = 0
+                            car.parkwaitingtime=1#开始候车，等待服务
                         #始发点
                         else:
-                            None
-                        #更新车站泊位信息
-                        for station in stationinstancelist:
-                            if station.stationID == car.forestation:
-                                if (station.parking == 0):
-                                    station.parking = car.busID
-                                    #开启服务
-                                    #下车
-                                    leavenum = 0
-
-                                    for passenger in car.passengers:
-                                        if passenger.terminus_Staion==station.stationID:
-                                            passenger.getout_finishtime=clock+1*leavenum
-                                            leavenum+=1
-
-                                    #for i in range(len(car.passengers)):
-                                    #    if car.passengers[i].terminus_Staion == station.stationID:
-                                    #        car.passengers[i].getout_finishtime = clock + 1 * leavenum#该乘客最终下车时间
-                                    #        car.passengers.remove(car.passengers[i])#删除该元素
-                                    #        leavenum += 1
-                                            #--update数据库--#
-                                            try:
-
-                                                conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
-                                                cur = conn.cursor()
-                                                cur.execute("update test.Passenger set get_off_bus_time=%d where passenger_id=%d" % (clock + 1 * leavenum,passenger.passenger_id))
-                                                conn.commit()
-                                                cur.close()
-                                                conn.close()
-                                            except MySQLdb.Error, e:
-                                                print "Mysql Error %d: %s" % (e.args[0], e.args[1])
-                                            #---------------#
-                                    #删
-                                    for passenger in car.passengers:
-                                        if passenger.terminus_Staion==station.stationID:
-                                            car.passengers.remove(passenger)
-                                    #上车
-                                    boardnum = 0
-                                    for i in range(len(routeline.stoplist) - (indexofpreshop + 1)):
-                                        for nextstation in stationinstancelist:
-                                            if nextstation.stationID == routeline.stoplist[i + indexofpreshop + 1]:
-                                            #for nextstation in routeline.stoplist[i+indexofpreshop+1]:
-                                                for passenger in station.passenger:
-                                                    if passenger.terminus_Staion == nextstation.stationID:#车站中的这个顾客可以选择该条线路
-
-                                                        if len(car.passengers) <= car.capacity:#乘客未满
-                                                            passenger.board_finishtime = clock + boardnum * 2#最终上车时间
-                                                            car.passengers.append(passenger)#乘客上车
-                                                            station.passenger.remove(passenger)#乘客离开站点
-                                                            #--update数据库--#
-                                                            try:
-
-                                                                conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
-                                                                cur = conn.cursor()
-                                                                cur.execute("update test.Passenger set get_on_bus_time=%d,bus_id=%d where passenger_id=%d" % (passenger.board_finishtime,car.busID,passenger.passenger_id))
-                                                                conn.commit()
-                                                                cur.close()
-                                                                conn.close()
-                                                            except MySQLdb.Error, e:
-                                                                print "Mysql Error %d: %s" % (e.args[0], e.args[1])
-                                                            #---------------#
-                                                        boardnum += 1
-                                        #设置等待时间
-                                    car.waitingtime = max(leavenum * 1, boardnum * 2)
-                                else:
-                                    car.parkwaitingtime = 1
+                            car.parkwaitingtime=1#开始候车，等待服务
 
 
 
-            #5、updata busonrun
-            busonrun = []
-            for car in routeline.buslist:
-                if (car.active == True):
-                    busonrun.append(car)
-            routeline.updatebusrunning(busonrun)
-
-
-            #3、对每一辆busonrun(bus),判断是否在原地等待，如果不是，更新距离距离信息
-            for car in routeline.busrunning:
-                if car.parkwaitingtime == 0:
-                    if car.waitingtime != 0:
-                        car.waitingtime -= 1
-                        if car.waitingtime == 0:#离开泊位
-                            for station in stationinstancelist:
-                                if station.stationID == car.forestation:
-                                    station.parking = 0
-                    else:
-                        speed = random.gauss(1, 0)#!!汽车行驶速度，需要导入数据
-                        car.rundistance += speed
-
-
-            #6、在车站内服务，服务完毕离开车站，腾出泊位
+            #4、进行服务，服务完毕离开车站，腾出泊位（只要检测该car处于候车状态（处于终点stop的car即使active属于false也要进行服务--对应＃5）就执行该子模块）
             for car in routeline.busrunning:
                 indexofforeshop = routeline.stoplist.index(car.forestation)#前一站的车站序号
                 indexofpreshop = indexofforeshop + 1
@@ -232,11 +145,7 @@ def clock(routeinstancelist, stationinstancelist):
                                 #下车
                                 leavenum = 0
 
-                                #for i in range(len(car.passengers)):
-                                #    if car.passengers[i].terminus_Staion == station.stationID:
-                                #        car.passengers[i].getout_finishtime = clock + 1 * leavenum#该乘客最终下车时间
-                                #        car.passengers.remove(car.passengers[i])#删除该元素
-                                 #       leavenum += 1
+                                #在某一秒时乘客进行下车操作，实际情况时同时下车的，纪录进数据库中时
                                 for passenger in car.passengers:
                                     if passenger.terminus_Staion==station.stationID:
                                         passenger.getout_finishtime=clock+1*leavenum
@@ -254,10 +163,8 @@ def clock(routeinstancelist, stationinstancelist):
                                             print "Mysql Error %d: %s" % (e.args[0], e.args[1])
                                         #---------------#
                                 #删
-                                for passenger in car.passengers:
-                                    if passenger.terminus_Staion==station.stationID:
-                                        car.passengers.remove(passenger)
-                                    #上车
+                                car.passengers = [passenger for passenger in car.passengers if passenger.terminus_Staion!=station.stationID]
+                                #上车
                                 boardnum = 0
                                 for i in range(len(routeline.stoplist) - (indexofpreshop + 1)):
                                     for nextstation in stationinstancelist:
@@ -288,8 +195,34 @@ def clock(routeinstancelist, stationinstancelist):
 
                             #如果没车位，继续等待
                             else:
-                                car.parkwaitingtime = 1
+                                car.parkwaitingtime = 1#继续等待
 
+
+
+            #6、对每一辆busonrun(bus),判断是否在原地等待，如果不是，更新距离距离信息（更新rundistance）
+            for car in routeline.busrunning:
+                if car.parkwaitingtime == 0:#没有在候车
+                    #在服务
+                    if car.waitingtime != 0:
+                        car.waitingtime -= 1
+                        if car.waitingtime == 0:#服务完毕，腾出泊位
+                            #如果是在终点站完成服务，active设为false
+                            if car.forestation == routeline.stoplist[len(routeline.stoplist) - 1]:
+                                car.active=False
+                            for station in stationinstancelist:
+                                if station.stationID == car.forestation:
+                                    station.parking = 0
+                    #在行驶
+                    else:
+                        speed = random.gauss(1, 0)#!!汽车行驶速度，需要导入数据
+                        car.rundistance += speed
+
+            #5、updata busonrun
+            busonrun = []
+            for car in routeline.buslist:
+                if (car.active == True):
+                    busonrun.append(car)
+            routeline.updatebusrunning(busonrun)
 
 if __name__ == "__main__":
     #清空数据库
@@ -347,10 +280,10 @@ if __name__ == "__main__":
     except MySQLdb.Error, e:
         print "Mysql Error %d: %s" % (e.args[0], e.args[1])
 
-    #初始化公交车站,Station:1,2.3,4,5,6,7,8,10,11,12,13,15,16,17,18,19,20,21,22,24,Stastioninstancelist[1]表示第一个公交车站
+    #初始化公交车站,Station:1,2.3,4,5,6,7,8,9,10,11,12,13,15,16,17,18,19,20,21,22,24,Stastioninstancelist[1]表示第一个公交车站
     stationinstancelist = []
     for i in range(24):
-        if (i + 1 != 9 and i + 1 != 14):
+        if (i + 1 != 14):
             stationinstancelist.append(Staion(i + 1))
 
     clock(routeinstancelist, stationinstancelist)
