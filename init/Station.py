@@ -7,11 +7,12 @@ class Staion:
     waitingtime=0#等待时间
     waitingpassenger=0#候车人员的数目
     passenger=[]
+    stopstate=[]
     def __init__(self,id):
         self.stationID=id
         self.passenger=[]
         self.parking=0
-
+        self.stopstate=[]
     def setwaitingpassenger(self,num):
         self.waitingpassenger=num
         self.waitingtime=int(self.waitingpassenger*1.5)

@@ -39,12 +39,12 @@ def clock(routeinstancelist, stationinstancelist):
                             if i >= j:
                                 f.write('0')
                             else:
-                                f.write('%s' % 3)  #3=poisson(2)
+                                f.write('%s' % poisson(2))  #10分钟a➡️b人数
                         else:
                             if i >= j:
                                 f.write('0,')
                             else:
-                                f.write('%s,' % 3)
+                                f.write('%s,' % poisson(2))
                     f.write('\n')
                 f.close()
 
@@ -108,9 +108,9 @@ def clock(routeinstancelist, stationinstancelist):
 
             #3、判断是否到达新站，如果到达，设置为候车。每次到站该子语句只执行一次
             for car in routeline.busrunning:
-                indexofforeshop = routeline.stoplist.index(car.forestation)#前一站的车站序号
-                indexofpreshop = indexofforeshop + 1
+                indexofforeshop = routeline.stoplist.index(car.forestation)
                 if ((car.rundistance!=0 and car.rundistance >= int(routeline.distancelist[indexofforeshop]) * 100) or (car.forestation == routeline.stoplist[0] and car.rundistance == 0 and clock % intervaltime == 0)):
+                    car.arrive_stop_time.append(clock)
                     if (car.forestation == routeline.stoplist[len(routeline.stoplist) - 2]):
                         #到达终点
                         car.forestation = routeline.stoplist[indexofforeshop + 1]
@@ -140,6 +140,7 @@ def clock(routeinstancelist, stationinstancelist):
                             if (station.parking == 0):
                                 #泊车等待结束
                                 car.parkwaitingtime = 0
+                                car.start_service_time.append(clock)
                                 station.parking = car.busID
                                 #开启服务
                                 #下车
@@ -166,14 +167,12 @@ def clock(routeinstancelist, stationinstancelist):
                                 car.passengers = [passenger for passenger in car.passengers if passenger.terminus_Staion!=station.stationID]
                                 #上车
                                 boardnum = 0
-                                for i in range(len(routeline.stoplist) - (indexofpreshop + 1)):
+                                for i in range(len(routeline.stoplist) - (indexofforeshop + 1)):
                                     for nextstation in stationinstancelist:
-                                        if nextstation.stationID == routeline.stoplist[i + indexofpreshop + 1]:
-                                        #for nextstation in routeline.stoplist[i+indexofpreshop+1]:
+                                        if nextstation.stationID == routeline.stoplist[i + indexofforeshop + 1]:
                                             for passenger in station.passenger:
                                                 if passenger.terminus_Staion == nextstation.stationID:#车站中的这个顾客可以选择该条线路
-
-                                                    if len(car.passengers) <= car.capacity:#乘客未满
+                                                    if len(car.passengers) < car.capacity:#乘客未满
                                                         passenger.board_finishtime = clock + boardnum * 2#最终上车时间
                                                         car.passengers.append(passenger)#乘客上车
                                                         station.passenger.remove(passenger)#乘客离开站点
@@ -182,7 +181,7 @@ def clock(routeinstancelist, stationinstancelist):
 
                                                             conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
                                                             cur = conn.cursor()
-                                                            cur.execute("update test.Passenger set get_on_bus_time=%d,bus_id=%d where passenger_id=%d" % (passenger.board_finishtime,car.busID,passenger.passenger_id))
+                                                            cur.execute("update test.Passenger set get_on_bus_time=%d,bus_id=%d,routeline_id=%d where passenger_id=%d" % (passenger.board_finishtime,car.busID,routeline.routelineID,passenger.passenger_id))
                                                             conn.commit()
                                                             cur.close()
                                                             conn.close()
@@ -192,7 +191,8 @@ def clock(routeinstancelist, stationinstancelist):
                                                     boardnum += 1
                                     #设置等待时间
                                 car.waitingtime = max(leavenum*1,boardnum*2)
-
+                                car.passenger_get_on_number.append(boardnum)
+                                car.passenger_get_off_number.append(leavenum)
                             #如果没车位，继续等待
                             else:
                                 car.parkwaitingtime = 1#继续等待
@@ -206,6 +206,7 @@ def clock(routeinstancelist, stationinstancelist):
                     if car.waitingtime != 0:
                         car.waitingtime -= 1
                         if car.waitingtime == 0:#服务完毕，腾出泊位
+                            car.end_service_time.append(clock)
                             #如果是在终点站完成服务，active设为false
                             if car.forestation == routeline.stoplist[len(routeline.stoplist) - 1]:
                                 car.active=False
@@ -214,7 +215,7 @@ def clock(routeinstancelist, stationinstancelist):
                                     station.parking = 0
                     #在行驶
                     else:
-                        speed = random.gauss(1, 0)#!!汽车行驶速度，需要导入数据
+                        speed = random.gauss(1, 0.1)#!!汽车行驶速度，需要导入数据
                         car.rundistance += speed
 
             #5、updata busonrun
@@ -224,6 +225,12 @@ def clock(routeinstancelist, stationinstancelist):
                     busonrun.append(car)
             routeline.updatebusrunning(busonrun)
 
+        #update stops'state
+        for station in stationinstancelist:
+            if station.parking!=0:
+                station.stopstate.append(1)
+            else:
+                station.stopstate.append(0)
 if __name__ == "__main__":
     #清空数据库
     try:
@@ -232,6 +239,8 @@ if __name__ == "__main__":
         #每次模拟前 需要对数据库进行清零
         cur.execute('truncate table test.Passenger')
         cur.execute('truncate table test.Bus')
+        cur.execute('truncate table test.Stop')
+        conn.commit()
         cur.close()
         conn.close()
     except MySQLdb.Error, e:
@@ -280,20 +289,93 @@ if __name__ == "__main__":
     except MySQLdb.Error, e:
         print "Mysql Error %d: %s" % (e.args[0], e.args[1])
 
-    #初始化公交车站,Station:1,2.3,4,5,6,7,8,9,10,11,12,13,15,16,17,18,19,20,21,22,24,Stastioninstancelist[1]表示第一个公交车站
+    #初始化公交车站,Station:1,2.3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,24,Stastioninstancelist[1]表示第一个公交车站
     stationinstancelist = []
     for i in range(24):
-        if (i + 1 != 14):
-            stationinstancelist.append(Staion(i + 1))
+        stationinstancelist.append(Staion(i + 1))
+    try:
+        conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
+        cur = conn.cursor()
+        for i in range(24):
+            cur.execute("insert into test.Stop(stop_id) values(%d)" %(i+1))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except MySQLdb.Error, e:
+        print "Mysql Error %d: %s" % (e.args[0], e.args[1])
 
+    #调用
     clock(routeinstancelist, stationinstancelist)
+
+    #insert data of Bus into database
+
+    for routeline in routeinstancelist:
+        for car in routeline.buslist:
+            try:
+                conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306,use_unicode=1, charset='utf8')
+                cur = conn.cursor()
+
+                arrive_stop_time=''
+                for item in car.arrive_stop_time:
+                    arrive_stop_time+=str(item)+','
+
+                start_service_time=''
+                for item in car.start_service_time:
+                    start_service_time+=str(item)+','
+
+                end_service_time=''
+                for item in car.end_service_time:
+                    end_service_time+=str(item)+','
+
+                passenger_get_on_number=''
+                for item in car.passenger_get_on_number:
+                    passenger_get_on_number+=str(item)+','
+
+                passenger_get_off_number=''
+                for item in car.passenger_get_off_number:
+                    passenger_get_off_number+=str(item)+','
+
+                passengernumber=0
+                for i in range(len(car.passenger_get_on_number)):
+                    passengernumber+=car.passenger_get_on_number[i]
+                    passengernumber-=car.passenger_get_off_number[i]
+                    car.passenger_number.append(passengernumber)
+                for i in range(len(car.arrive_stop_time)-1):
+                    car.running_time.append(car.arrive_stop_time[i+1]-car.end_service_time[i])
+
+
+                running_time=''
+                for item in car.running_time:
+                    running_time+=str(item)+','
+
+                passenger_number=''
+                for item in car.passenger_number:
+                    passenger_number+=str(item)+','
+
+                cur.execute("update test.Bus set arrive_stop_time='%s',start_service_time='%s',end_service_time='%s',passenger_get_on_number='%s',passenger_get_off_number='%s',running_time='%s',passenger_number='%s' where bus_id=%d" %(arrive_stop_time,start_service_time,end_service_time,passenger_get_on_number,passenger_get_off_number,running_time,passenger_number,car.busID))
+                conn.commit()
+                cur.close()
+                conn.close()
+            except MySQLdb.Error, e:
+                print "Mysql Error %d: %s" % (e.args[0], e.args[1])
+
+    # insert stops'state into database
+    for station in stationinstancelist:
+        try:
+            conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
+            cur = conn.cursor()
+            cur.execute("update test.Stop set stop_state='%s' where stop_id=%d" %(station.stopstate,station.stationID))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except MySQLdb.Error, e:
+            print "Mysql Error %d: %s" % (e.args[0], e.args[1])
+
+
     #输出运行结果
-
-
-
-
     for routeline in routeinstancelist:
         print('routeID:' + str(routeline.routelineID))
         for car in routeline.buslist:
             car.information()
         print('----------------------------------------------------------------')
+
