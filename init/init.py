@@ -39,7 +39,7 @@ def clock(routeinstancelist, stationinstancelist):
                             if i >= j:
                                 f.write('0')
                             else:
-                                f.write('%s' % poisson(2))  #10分钟a➡️b人数
+                                f.write('%s' % poisson(2))  #10分钟a➡b人数
                         else:
                             if i >= j:
                                 f.write('0,')
@@ -269,20 +269,20 @@ if __name__ == "__main__":
         newroute = RouteLine(i, stoplist[i], distancelist[i])
         routeinstancelist.append(newroute)
 
-
+    bus_num_per_routeline=30
     #初始化公交汽车，每一个条公交线路分配10辆车,一号线路分配1-10号车，二号线路分配11-20号车...
     for i in range(10):
         buslist = []
-        for j in range(10):
-            buslist.append(Bus(i * 10 + j + 1, i, routeinstancelist[i].stoplist[0]))#车号，公交线路ID，起始位置公交车站号
+        for j in range(bus_num_per_routeline):
+            buslist.append(Bus(i * bus_num_per_routeline + j + 1, i, routeinstancelist[i].stoplist[0]))#车号，公交线路ID，起始位置公交车站号
         routeinstancelist[i].setbuslist(buslist)#将各线路上的车分别分配到十条线路上，之后再操作公交车通过线路操作
         #----写入数据库
     try:
         conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
         cur = conn.cursor()
         for i in range(10):
-            for j in range(10):
-                cur.execute("insert into test.Bus(bus_id,routeline_id) values(%d,%d)" %(i * 10 + j + 1,i))
+            for j in range(bus_num_per_routeline):
+                cur.execute("insert into test.Bus(bus_id,routeline_id) values(%d,%d)" %(i * bus_num_per_routeline + j + 1,i))
         conn.commit()
         cur.close()
         conn.close()
@@ -364,7 +364,10 @@ if __name__ == "__main__":
         try:
             conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
             cur = conn.cursor()
-            cur.execute("update test.Stop set stop_state='%s' where stop_id=%d" %(station.stopstate,station.stationID))
+            text=''
+            for item in station.stopstate:
+                text+=str(item)+','
+            cur.execute("update test.Stop set stop_state='%s' where stop_id=%d" %(text,station.stationID))
             conn.commit()
             cur.close()
             conn.close()
