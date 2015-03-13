@@ -7,10 +7,11 @@ from Passenger import Passenger
 import random
 import math
 import MySQLdb
+import time
 
 import threading
 
-
+#to do:add berth number
 def poisson(u):#泊松函数
     p = 1.0
     k = 0
@@ -137,11 +138,11 @@ def clock(routeinstancelist, stationinstancelist):
                     for station in stationinstancelist:
                         if station.stationID == car.forestation:
                             #如果有车位，进入车位，开始乘客服务
-                            if (station.parking == 0):
+                            if (len(station.parking) < station.berthnumber):
                                 #泊车等待结束
                                 car.parkwaitingtime = 0
                                 car.start_service_time.append(clock)
-                                station.parking = car.busID
+                                station.parking.append(car.busID)
                                 #开启服务
                                 #下车
                                 leavenum = 0
@@ -188,7 +189,7 @@ def clock(routeinstancelist, stationinstancelist):
                                                         except MySQLdb.Error, e:
                                                             print "Mysql Error %d: %s" % (e.args[0], e.args[1])
                                                         #---------------#
-                                                    boardnum += 1
+                                                        boardnum += 1
                                     #设置等待时间
                                 car.waitingtime = max(leavenum*1,boardnum*2)
                                 car.passenger_get_on_number.append(boardnum)
@@ -212,7 +213,7 @@ def clock(routeinstancelist, stationinstancelist):
                                 car.active=False
                             for station in stationinstancelist:
                                 if station.stationID == car.forestation:
-                                    station.parking = 0
+                                    station.parking.remove(car.busID)
                     #在行驶
                     else:
                         speed = random.gauss(1, 0.1)#!!汽车行驶速度，需要导入数据
@@ -227,11 +228,10 @@ def clock(routeinstancelist, stationinstancelist):
 
         #update stops'state
         for station in stationinstancelist:
-            if station.parking!=0:
-                station.stopstate.append(1)
-            else:
-                station.stopstate.append(0)
+            station.stopstate.append(len(station.parking))
+
 if __name__ == "__main__":
+    start = time.clock()
     #清空数据库
     try:
         conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
@@ -240,6 +240,7 @@ if __name__ == "__main__":
         cur.execute('truncate table test.Passenger')
         cur.execute('truncate table test.Bus')
         cur.execute('truncate table test.Stop')
+        cur.execute('truncate table test.Statistic')
         conn.commit()
         cur.close()
         conn.close()
@@ -292,7 +293,7 @@ if __name__ == "__main__":
     #初始化公交车站,Station:1,2.3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,24,Stastioninstancelist[1]表示第一个公交车站
     stationinstancelist = []
     for i in range(24):
-        stationinstancelist.append(Staion(i + 1))
+        stationinstancelist.append(Staion(i + 1,2))#ID,Berthnumber
     try:
         conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
         cur = conn.cursor()
@@ -382,3 +383,7 @@ if __name__ == "__main__":
             car.information()
         print('----------------------------------------------------------------')
 
+    execfile('chart.py')
+    execfile('Statistic.py')
+    elapsed = (time.clock() - start)
+    print("Time used:",elapsed)

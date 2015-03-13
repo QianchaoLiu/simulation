@@ -2,6 +2,8 @@
 from pylab import *
 import matplotlib
 import MySQLdb
+import numpy
+import time
 import wx
 
 #Passengers' waiting time
@@ -68,7 +70,7 @@ for i in range(len(stopinfo)):
     for j in range(len(stopinfo[i])):
         templine.append(int(stopinfo[i][j]))
     stopmatrix.append(templine)
-
+#begin draw chart
 
 
 for routelinenum in range(len(stopmatrix)):
@@ -76,6 +78,7 @@ for routelinenum in range(len(stopmatrix)):
     X=np.arange(n)
     Y1=[]#spare
     Y2=[]#service
+
     for i in range(n):
         Y1.append(0),Y2.append(0)
     statuslist=[]
@@ -93,7 +96,7 @@ for routelinenum in range(len(stopmatrix)):
             print e.message
     for i in range(n):
         for j in statuslist[i].split(','):
-            if j=='1':
+            if j=='1' or j=='2':
                 Y2[i]+=1
             elif j=='0':
                 Y1[i]+=1
@@ -130,30 +133,34 @@ for stop_id in range(24):
     routelinelist=[]
     for i in range(len(stopmatrix)):
         for j in range(len(stopmatrix[i])):
-            if stopmatrix[i][j]==stop_id:
+            if stopmatrix[i][j]==stop_id:#经过该站的所有routeline的
                 temp=[]
                 temp.append(i)#i,j第i个routeline的第j个元素为该stop
                 temp.append(j)
+
                 routelinelist.append(temp)
                 break
     datalist=[]
     #通过routeline_id找到车并存储下来相关数据
-    for routeline_id in routelinelist:
-        try:
-            conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
+    try:
+        conn = MySQLdb.connect(host='localhost', user='root', passwd='root', db='test', port=3306)
+        for routeline_id in routelinelist:
             cur = conn.cursor()
             aa=cur.execute("select start_service_time,end_service_time from test.Bus where routeline_id=%d" % (routeline_id[0]))
             info=cur.fetchmany(aa)
             for item in info:
-                datalist.append(int(item[1].split(',')[routeline_id[1]])-int(item[0].split(',')[routeline_id[1]]))
-                #findbug
-            conn.commit()
+                servicetime = int(item[1].split(',')[routeline_id[1]])-int(item[0].split(',')[routeline_id[1]])
+                datalist.append(servicetime)
             cur.close()
-            conn.close()
-        except Exception,e:
-            print e.message
-    print min(datalist),max(datalist)
+        conn.close()
+    except Exception,e:
+        print e.message
+    narray=numpy.array(datalist)
+    lenght=len(narray)
+    mean=narray.sum()/float(lenght)
+    var=((narray*narray).sum())/float(lenght)-mean**2
 
+    #draw pic
     X=range(0,max(datalist)+2,2)
     n=len(X)
     Y=[]
@@ -167,12 +174,11 @@ for stop_id in range(24):
 
     #for x,y in zip(X,Y):
     #text(x, y+0.01, '%.2f' % y, ha='center', va='bottom')
-
-    #if max(datalist)>400:
-    #    xlim(-.5,100), xticks(range(0,100,100/10))
-    #else:
-    xlim(-.5,max(datalist)+2), xticks(range(0,max(datalist),5))
-    ylim(0,max(Y)+1), yticks(range(0,max(Y)))
+    xmax=max(datalist)+2
+    ymax=max(Y)+1
+    text(xmax*0.7,ymax*0.9,'mean=%0.2f,var=%0.2f' %(mean,var),size=8)
+    xlim(-.5,xmax), xticks(range(0,max(datalist),5))
+    ylim(0,ymax), yticks(range(0,max(Y)))
     title('Service Time of Bus at Stop%d' % stop_id,size=15)
     xlabel('Service time /s',size=7)
     ylabel('Number of Bus',size=7)
@@ -209,6 +215,11 @@ for stop_id in range(24):
             print e.message
     print min(datalist),max(datalist)
 
+    narray=numpy.array(datalist)
+    lenght=len(narray)
+    mean=narray.sum()/float(lenght)
+    var=((narray*narray).sum())/float(lenght)-mean**2
+
     X=range(0,max(datalist)+2,2)
     n=len(X)
     Y=[]
@@ -223,13 +234,20 @@ for stop_id in range(24):
     #for x,y in zip(X,Y):
     #text(x, y+0.01, '%.2f' % y, ha='center', va='bottom')
 
+    xmax=0
     if max(datalist)<20:
         xlim(-.5,100), xticks(range(0,100,5))
+        xmax=100
     else:
         xlim(-.5,max(datalist)+2), xticks(range(0,max(datalist),max(datalist)/10))
+        xmax=max(datalist)+2
     ylim(0,max(Y)+1), yticks(range(0,max(Y),max(Y)/10))
+    ymax=max(Y)+1
+    text(xmax*0.7,ymax*0.9,'mean=%0.2f,var=%0.2f' %(mean,var),size=8)
+
     title('Waiting Time of Bus at Stop%d' % stop_id,size=15)
     xlabel('Waiting time /s',size=7)
     ylabel('Number of Bus',size=7)
     savefig('/users/liuqianchao/desktop/ans/buses\'waitingtime/stop%d.png' % stop_id,dpi=480)
     clf()
+
